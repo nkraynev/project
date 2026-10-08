@@ -67,7 +67,9 @@
   </div>
   <div id="hint">Controls: W — up, S — down, A — left, D — right</div>
 
+<script src="game.js"></script>
 <script>
+const { COLS, ROWS, SMOOTH, createState, queueDirection, step: gameStep, keyToDirection } = SnakeGame;
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
@@ -75,13 +77,7 @@ const bestEl = document.getElementById('best');
 const overEl = document.getElementById('gameover');
 const finalEl = document.getElementById('final');
 
-const CELL = 20;
-const COLS = canvas.width / CELL;
-const ROWS = canvas.height / CELL;
-const BASE_SPEED = 150;  // ms per step at the start
-const SPEED_STEP = 8;    // ms faster every 10 points
-const MIN_SPEED = 60;
-const SMOOTH = 1;     // share of a step spent sliding between cells (less = snappier)
+const CELL = canvas.width / COLS;
 const SKINS = [
   { name: 'Green',  head: '#8fd18f', body: '#5aa65a' },
   { name: 'Blue',   head: '#7fb8ff', body: '#4a86d4' },
@@ -94,63 +90,38 @@ let skinIndex = 0;
 try { skinIndex = parseInt(localStorage.getItem('snakeSkin'), 10) || 0; } catch (e) {}
 if (skinIndex < 0 || skinIndex >= SKINS.length) skinIndex = 0;
 
+const storage = (() => { try { return localStorage; } catch (e) { return null; } })();
+
 function currentSpeed() {
-  return Math.max(MIN_SPEED, BASE_SPEED - Math.floor(score / 10) * SPEED_STEP);
+  return SnakeGame.currentSpeed(game.score);
 }
 
-let snake, prevSnake, dir, inputQueue, food, score, alive;
+let game, prevSnake;
 let acc = 0, lastTime = 0;
-let best = 0;
-try { best = parseInt(localStorage.getItem('snakeBest'), 10) || 0; } catch (e) {}
-bestEl.textContent = 'Best: ' + best;
 
 function start() {
-  snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
-  prevSnake = snake.map(s => ({ ...s }));
-  dir = { x: 1, y: 0 };
-  inputQueue = [];
-  score = 0;
-  alive = true;
+  game = createState({ storage });
+  prevSnake = game.snake.map(s => ({ ...s }));
   acc = 0;
   scoreEl.textContent = 'Score: 0';
+  bestEl.textContent = 'Best: ' + game.best;
   overEl.style.display = 'none';
-  placeFood();
-}
-
-function placeFood() {
-  do {
-    food = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
-  } while (snake.some(s => s.x === food.x && s.y === food.y));
 }
 
 function step() {
-  if (inputQueue.length) dir = inputQueue.shift();
-  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
-
-  const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
-  const hitSelf = snake.some(s => s.x === head.x && s.y === head.y);
-  if (hitWall || hitSelf) return gameOver();
-
-  prevSnake = snake.map(s => ({ ...s }));
-  snake.unshift(head);
-  if (head.x === food.x && head.y === food.y) {
-    score++;
-    scoreEl.textContent = 'Score: ' + score;
-    if (score > best) {
-      best = score;
-      bestEl.textContent = 'Best: ' + best;
-      try { localStorage.setItem('snakeBest', best); } catch (e) {}
-    }
-    placeFood();
-  } else {
-    snake.pop();
+  const prev = game.snake.map(s => ({ ...s }));
+  const result = gameStep(game);
+  if (result === 'dead') return gameOver();
+  prevSnake = prev;
+  if (result === 'ate') {
+    scoreEl.textContent = 'Score: ' + game.score;
+    bestEl.textContent = 'Best: ' + game.best;
   }
 }
 
 function gameOver() {
-  alive = false;
-  prevSnake = snake.map(s => ({ ...s }));
-  finalEl.textContent = 'Score: ' + score;
+  prevSnake = game.snake.map(s => ({ ...s }));
+  finalEl.textContent = 'Score: ' + game.score;
   overEl.style.display = 'flex';
 }
 
@@ -177,9 +148,9 @@ function drawClaude(cx, cy, r) {
 function draw(t) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawClaude(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 1);
+  drawClaude(game.food.x * CELL + CELL / 2, game.food.y * CELL + CELL / 2, CELL / 2 - 1);
 
-  snake.forEach((s, i) => {
+  game.snake.forEach((s, i) => {
     const p = prevSnake[Math.min(i, prevSnake.length - 1)];
     const x = p.x + (s.x - p.x) * t;
     const y = p.y + (s.y - p.y) * t;
@@ -191,41 +162,28 @@ function draw(t) {
 function frame(time) {
   const dt = Math.min(time - (lastTime || time), 100);
   lastTime = time;
-  if (alive) {
+  if (game.alive) {
     acc += dt;
     const interval = currentSpeed();
-    while (alive && acc >= interval) {
+    while (game.alive && acc >= interval) {
       acc -= interval;
       step();
     }
   }
-  draw(alive ? Math.min(acc / (currentSpeed() * SMOOTH), 1) : 1);
+  draw(game.alive ? Math.min(acc / (currentSpeed() * SMOOTH), 1) : 1);
   requestAnimationFrame(frame);
 }
 
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (!alive) {
+  if (!game.alive) {
     if (k === ' ' || k === 'enter') start();
     return;
   }
-  // Russian layout is supported too: ц ы ф в = w s a d
-  const map = {
-    w: { x: 0, y: -1 }, 'ц': { x: 0, y: -1 },
-    s: { x: 0, y: 1 },  'ы': { x: 0, y: 1 },
-    a: { x: -1, y: 0 }, 'ф': { x: -1, y: 0 },
-    d: { x: 1, y: 0 },  'в': { x: 1, y: 0 },
-  };
-  const d = map[k];
-  if (!d) return;
-  // queue turns so quick presses are not lost; check against the last queued direction
-  const last = inputQueue.length ? inputQueue[inputQueue.length - 1] : dir;
-  const same = d.x === last.x && d.y === last.y;
-  const reverse = d.x === -last.x && d.y === -last.y; // no 180° turns
-  if (same || reverse || inputQueue.length >= 3) return;
-  inputQueue.push(d);
+  const d = keyToDirection(k);
+  if (!d || !queueDirection(game, d)) return;
   // the snake has already finished sliding into its cell: turn right now instead of waiting for the next tick
-  if (inputQueue.length === 1 && acc >= currentSpeed() * SMOOTH) {
+  if (game.inputQueue.length === 1 && SnakeGame.shouldTurnNow(acc, game.score)) {
     acc = 0;
     step();
   }
