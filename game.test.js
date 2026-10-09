@@ -178,6 +178,52 @@ test('running into own body ends the game', () => {
   assert.equal(s.alive, false);
 });
 
+test('head may enter the cell the tail is leaving this turn', () => {
+  // 2x2 loop: the head at (5,5) steps down into (5,6), where the tail is right now
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+  });
+  G.queueDirection(s, DOWN);
+  assert.equal(G.step(s), 'moved');
+  assert.equal(s.alive, true);
+  assert.deepEqual(s.snake, [{ x: 5, y: 6 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }]);
+});
+
+test('head still dies on a body cell that is not the tail', () => {
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }, { x: 4, y: 6 }],
+    dir: LEFT,
+  });
+  G.queueDirection(s, DOWN); // (5,6) is the second to last cell, not the tail
+  assert.equal(G.step(s), 'dead');
+});
+
+test('when the snake eats, the tail stays and its cell is still a collision', () => {
+  // artificial case: food lies on the tail cell, so the tail would not move away
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+    food: { x: 5, y: 6 },
+  });
+  G.queueDirection(s, DOWN);
+  assert.equal(G.step(s), 'dead');
+  assert.equal(s.alive, false);
+});
+
+test('chasing its own tail in a loop works for many laps', () => {
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+  });
+  for (const d of [DOWN, RIGHT, UP, LEFT, DOWN, RIGHT, UP, LEFT]) {
+    G.queueDirection(s, d);
+    assert.equal(G.step(s), 'moved');
+  }
+  assert.equal(s.alive, true);
+  assert.equal(s.snake.length, 4);
+});
+
 test('a dead snake does not move', () => {
   const s = makeState();
   s.alive = false;
