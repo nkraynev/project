@@ -64,6 +64,7 @@
       score: 0,
       best: storage ? loadBest(storage) : 0,
       alive: true,
+      won: false,
       random,
       storage,
     };
@@ -80,27 +81,36 @@
     return true;
   }
 
-  // One game tick. Returns 'moved' | 'ate' | 'dead' (also 'dead' if the game is already over).
+  // One game tick. Returns 'moved' | 'ate' | 'won' | 'dead'
+  // ('dead' also if the game is already over; 'won' when the snake fills the whole field).
   function step(state) {
     if (!state.alive) return 'dead';
     if (state.inputQueue.length) state.dir = state.inputQueue.shift();
     const head = { x: state.snake[0].x + state.dir.x, y: state.snake[0].y + state.dir.y };
 
     const hitWall = head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS;
-    const hitSelf = state.snake.some(s => s.x === head.x && s.y === head.y);
+    // the tail leaves its cell this turn unless the snake eats, so only then it is not an obstacle
+    const willEat = !!state.food && head.x === state.food.x && head.y === state.food.y;
+    const body = willEat ? state.snake : state.snake.slice(0, -1);
+    const hitSelf = body.some(s => s.x === head.x && s.y === head.y);
     if (hitWall || hitSelf) {
       state.alive = false;
       return 'dead';
     }
 
     state.snake.unshift(head);
-    if (state.food && head.x === state.food.x && head.y === state.food.y) {
+    if (willEat) {
       state.score++;
       if (state.score > state.best) {
         state.best = state.score;
         if (state.storage) saveBest(state.storage, state.best);
       }
       state.food = placeFood(state.snake, state.random);
+      if (!state.food) { // no free cell left: the player has won
+        state.alive = false;
+        state.won = true;
+        return 'won';
+      }
       return 'ate';
     }
     state.snake.pop();

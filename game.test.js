@@ -341,3 +341,32 @@ test('a failing storage does not break the game', () => {
   assert.doesNotThrow(() => G.step(s));
   assert.equal(s.best, 1);
 });
+
+// --- victory ---
+
+test('eating the last free cell wins the game', () => {
+  // the snake fills the field row by row (zigzag) except the last cell (0,19), where the food lies
+  const snake = [];
+  for (let y = 0; y < G.ROWS; y++) {
+    const xs = [...Array(G.COLS).keys()];
+    if (y % 2 === 1) xs.reverse();
+    for (const x of xs) snake.push({ x, y });
+  }
+  snake.pop(); // the last cell of the path, (0,19), stays free
+  const free = { x: 0, y: G.ROWS - 1 };
+  snake.reverse(); // the head is the end of the path, next to the free cell
+  const s = makeState({ snake, dir: { x: -1, y: 0 }, food: free });
+  assert.deepEqual(s.snake[0], { x: 1, y: G.ROWS - 1 });
+  assert.equal(G.step(s), 'won');
+  assert.equal(s.won, true);
+  assert.equal(s.alive, false);
+  assert.equal(s.food, null);
+  assert.equal(s.snake.length, G.COLS * G.ROWS);
+  assert.equal(G.step(s), 'dead'); // the game is over
+});
+
+test('a normal game is not marked as won', () => {
+  const s = makeState({ food: { x: 11, y: 10 } });
+  assert.equal(G.step(s), 'ate');
+  assert.equal(s.won, false);
+});
