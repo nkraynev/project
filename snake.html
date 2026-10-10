@@ -58,7 +58,7 @@
   <div id="wrap">
     <canvas id="game" width="400" height="400"></canvas>
     <div id="gameover">
-      <h1>GAME OVER</h1>
+      <h1 id="title">GAME OVER</h1>
       <p id="final">Score: 0</p>
       <p>Snake skin:</p>
       <div id="skins"></div>
@@ -75,6 +75,7 @@ const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const overEl = document.getElementById('gameover');
+const titleEl = document.getElementById('title');
 const finalEl = document.getElementById('final');
 
 const CELL = canvas.width / COLS;
@@ -113,14 +114,16 @@ function step() {
   const result = gameStep(game);
   if (result === 'dead') return gameOver();
   prevSnake = prev;
-  if (result === 'ate') {
+  if (result === 'ate' || result === 'won') {
     scoreEl.textContent = 'Score: ' + game.score;
     bestEl.textContent = 'Best: ' + game.best;
   }
+  if (result === 'won') gameOver();
 }
 
 function gameOver() {
   prevSnake = game.snake.map(s => ({ ...s }));
+  titleEl.textContent = game.won ? 'YOU WIN!' : 'GAME OVER';
   finalEl.textContent = 'Score: ' + game.score;
   overEl.style.display = 'flex';
 }
@@ -148,7 +151,7 @@ function drawClaude(cx, cy, r) {
 function draw(t) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawClaude(game.food.x * CELL + CELL / 2, game.food.y * CELL + CELL / 2, CELL / 2 - 1);
+  if (game.food) drawClaude(game.food.x * CELL + CELL / 2, game.food.y * CELL + CELL / 2, CELL / 2 - 1);
 
   game.snake.forEach((s, i) => {
     const p = prevSnake[Math.min(i, prevSnake.length - 1)];

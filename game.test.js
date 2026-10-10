@@ -178,6 +178,52 @@ test('running into own body ends the game', () => {
   assert.equal(s.alive, false);
 });
 
+test('head may enter the cell the tail is leaving this turn', () => {
+  // 2x2 loop: the head at (5,5) steps down into (5,6), where the tail is right now
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+  });
+  G.queueDirection(s, DOWN);
+  assert.equal(G.step(s), 'moved');
+  assert.equal(s.alive, true);
+  assert.deepEqual(s.snake, [{ x: 5, y: 6 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }]);
+});
+
+test('head still dies on a body cell that is not the tail', () => {
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }, { x: 4, y: 6 }],
+    dir: LEFT,
+  });
+  G.queueDirection(s, DOWN); // (5,6) is the second to last cell, not the tail
+  assert.equal(G.step(s), 'dead');
+});
+
+test('when the snake eats, the tail stays and its cell is still a collision', () => {
+  // artificial case: food lies on the tail cell, so the tail would not move away
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+    food: { x: 5, y: 6 },
+  });
+  G.queueDirection(s, DOWN);
+  assert.equal(G.step(s), 'dead');
+  assert.equal(s.alive, false);
+});
+
+test('chasing its own tail in a loop works for many laps', () => {
+  const s = makeState({
+    snake: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }, { x: 5, y: 6 }],
+    dir: LEFT,
+  });
+  for (const d of [DOWN, RIGHT, UP, LEFT, DOWN, RIGHT, UP, LEFT]) {
+    G.queueDirection(s, d);
+    assert.equal(G.step(s), 'moved');
+  }
+  assert.equal(s.alive, true);
+  assert.equal(s.snake.length, 4);
+});
+
 test('a dead snake does not move', () => {
   const s = makeState();
   s.alive = false;
@@ -294,4 +340,33 @@ test('a failing storage does not break the game', () => {
   s.food = { x: 11, y: 10 };
   assert.doesNotThrow(() => G.step(s));
   assert.equal(s.best, 1);
+});
+
+// --- victory ---
+
+test('eating the last free cell wins the game', () => {
+  // the snake fills the field row by row (zigzag) except the last cell (0,19), where the food lies
+  const snake = [];
+  for (let y = 0; y < G.ROWS; y++) {
+    const xs = [...Array(G.COLS).keys()];
+    if (y % 2 === 1) xs.reverse();
+    for (const x of xs) snake.push({ x, y });
+  }
+  snake.pop(); // the last cell of the path, (0,19), stays free
+  const free = { x: 0, y: G.ROWS - 1 };
+  snake.reverse(); // the head is the end of the path, next to the free cell
+  const s = makeState({ snake, dir: { x: -1, y: 0 }, food: free });
+  assert.deepEqual(s.snake[0], { x: 1, y: G.ROWS - 1 });
+  assert.equal(G.step(s), 'won');
+  assert.equal(s.won, true);
+  assert.equal(s.alive, false);
+  assert.equal(s.food, null);
+  assert.equal(s.snake.length, G.COLS * G.ROWS);
+  assert.equal(G.step(s), 'dead'); // the game is over
+});
+
+test('a normal game is not marked as won', () => {
+  const s = makeState({ food: { x: 11, y: 10 } });
+  assert.equal(G.step(s), 'ate');
+  assert.equal(s.won, false);
 });
